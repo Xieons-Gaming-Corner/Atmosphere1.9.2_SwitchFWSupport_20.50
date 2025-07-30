@@ -1,6 +1,5 @@
 name: Build Atmosphere-NX
 
-# Trigger the workflow on push or pull request to the main branch
 on:
   push:
     branches:
@@ -8,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
   build:
@@ -43,20 +43,30 @@ jobs:
         run: |
           make -j$(nproc)
 
-      # Upload fusee.bin as an artifact
-      - name: Upload fusee.bin
+      # Create artifact directories
+      - name: Prepare artifacts
+        run: |
+          mkdir -p artifacts/bootloader/payloads
+          cp fusee/bin/fusee.bin artifacts/bootloader/payloads/
+          cp -r out/* artifacts/
+
+      # Upload artifacts
+      - name: Upload Atmosphere artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: fusee-bin
-          path: fusee/bin/fusee.bin
+          name: atmosphere-artifacts
+          path: artifacts/
           if-no-files-found: error
           retention-days: 5
 
-      # Upload SD card files as an artifact
-      - name: Upload SD card files
-        uses: actions/upload-artifact@v4
-        with:
-          name: sd-card-files
-          path: out/
-          if-no-files-found: error
-          retention-days: 5
+      # Optional: Commit artifacts to repository
+      - name: Commit artifacts to repository
+        if: github.event_name == 'push'  # Only run on push, not PR
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add artifacts/
+          git commit -m "Add compiled Atmosphere artifacts"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
