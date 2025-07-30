@@ -1,0 +1,62 @@
+name: Build Atmosphere-NX
+
+# Trigger the workflow on push or pull request to the main branch
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive  # Initialize and update submodules
+
+      # Install devkitPro and dependencies
+      - name: Install devkitPro
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential wget python3 python3-pip liblz4-dev
+          wget https://apt.devkitpro.org/install-devkitpro-pacman
+          sudo dpkg -i install-devkitpro-pacman
+          sudo dkp-pacman -Syu
+          sudo dkp-pacman -S switch-dev devkitA64 --noconfirm
+          pip3 install pyelftools
+
+      # Set up devkitPro environment variables
+      - name: Set up devkitPro environment
+        run: |
+          echo "DEVKITPRO=/opt/devkitpro" >> $GITHUB_ENV
+          echo "DEVKITARM=/opt/devkitpro/devkitARM" >> $GITHUB_ENV
+          echo "DEVKITPPC=/opt/devkitpro/devkitPPC" >> $GITHUB_ENV
+
+      # Build Atmosphere
+      - name: Build Atmosphere
+        run: |
+          make -j$(nproc)
+
+      # Upload fusee.bin as an artifact
+      - name: Upload fusee.bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusee-bin
+          path: fusee/bin/fusee.bin
+          if-no-files-found: error
+          retention-days: 5
+
+      # Upload SD card files as an artifact
+      - name: Upload SD card files
+        uses: actions/upload-artifact@v4
+        with:
+          name: sd-card-files
+          path: out/
+          if-no-files-found: error
+          retention-days: 5
