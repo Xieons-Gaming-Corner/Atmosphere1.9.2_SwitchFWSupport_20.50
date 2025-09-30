@@ -9,22 +9,19 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   build:
     permissions:
       contents: write
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-22.04  # Use stable runner
     steps:
-      # Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive  # Initialize and update submodules
+          submodules: recursive
 
-      # Install devkitPro and dependencies
       - name: Install devkitPro
         run: |
           sudo apt-get update
@@ -35,26 +32,30 @@ jobs:
           sudo dkp-pacman -S switch-dev devkitA64 --noconfirm
           pip3 install pyelftools
 
-      # Set up devkitPro environment variables
       - name: Set up devkitPro environment
         run: |
           echo "DEVKITPRO=/opt/devkitpro" >> $GITHUB_ENV
           echo "DEVKITARM=/opt/devkitpro/devkitARM" >> $GITHUB_ENV
           echo "DEVKITPPC=/opt/devkitpro/devkitPPC" >> $GITHUB_ENV
+          echo "/opt/devkitpro/tools/bin" >> $GITHUB_PATH  # Add tools to PATH
+          echo "/opt/devkitpro/devkitA64/bin" >> $GITHUB_PATH
 
-      # Build Atmosphere
+      - name: Verify devkitPro tools
+        run: |
+          aarch64-none-elf-gcc --version  # Check compiler
+          make --version
+          python3 --version
+
       - name: Build Atmosphere
         run: |
-          make -j$(nproc)
+          make -j$(nproc) || { echo "Build failed"; exit 1; }  # Explicit error handling
 
-      # Create artifact directories
       - name: Prepare artifacts
         run: |
           mkdir -p artifacts/bootloader/payloads
           cp fusee/bin/fusee.bin artifacts/bootloader/payloads/
           cp -r out/* artifacts/
 
-      # Upload artifacts
       - name: Upload Atmosphere artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -63,14 +64,14 @@ jobs:
           if-no-files-found: error
           retention-days: 5
 
-      # Optional: Commit artifacts to repository
       - name: Commit artifacts to repository
-        if: github.event_name == 'push'  # Only run on push, not PR
+        if: github.event_name == 'push'
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add artifacts/
-          git commit -m "Add compiled Atmosphere artifacts"
+          git diff-index --quiet HEAD || git commit -m "Add compiled Atmosphere artifacts"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true  # Prevent failure on empty commits
